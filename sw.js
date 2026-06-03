@@ -1,8 +1,11 @@
-const CACHE_NAME = 'time-tracker-v1';
+const CACHE_NAME = 'time-tracker-v3';
 const STATIC_ASSETS = [
   './',
   './index.html',
   './manifest.json',
+  './icon-192.png',
+  './icon-512.png',
+  './splash.png',
 ];
 
 self.addEventListener('install', event => {
@@ -22,11 +25,17 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  // Network-first for CDN resources, cache-first for local assets
   const url = new URL(event.request.url);
   if (url.origin === location.origin) {
+    // Network-first: luôn lấy bản mới nhất, fallback về cache nếu offline
     event.respondWith(
-      caches.match(event.request).then(cached => cached || fetch(event.request))
+      fetch(event.request)
+        .then(response => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+          return response;
+        })
+        .catch(() => caches.match(event.request))
     );
   }
 });
