@@ -1,0 +1,1251 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Time Tracker" />
+  <meta name="description" content="Theo dõi thời gian hoạt động hàng ngày của bạn" />
+  <title>Time Tracker – Nhật ký hoạt động</title>
+
+  <!-- 1. Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- 2. Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- 3. React -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+  <!-- 4. ReactDOM -->
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+  <!-- 5. PropTypes — PHẢI trước Recharts -->
+  <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js" crossorigin></script>
+  <!-- 6. Recharts — sau PropTypes -->
+  <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js" crossorigin></script>
+  <!-- 7. Babel — CUỐI CÙNG -->
+  <script src="https://unpkg.com/@babel/standalone@7.24.0/babel.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: { extend: { fontFamily: { sans: ['Inter', 'sans-serif'] } } }
+    };
+  </script>
+
+  <style>
+    *,
+    *::before,
+    *::after {
+      -webkit-tap-highlight-color: transparent;
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: #0f172a;
+      font-family: 'Inter', sans-serif;
+      overscroll-behavior: none;
+    }
+
+    #root {
+      min-height: 100dvh;
+    }
+
+    ::-webkit-scrollbar {
+      width: 3px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 99px;
+    }
+
+    .act-btn {
+      transition: transform 0.1s ease, opacity 0.1s ease;
+      cursor: pointer;
+    }
+
+    .act-btn:active {
+      transform: scale(0.92);
+      opacity: 0.8;
+    }
+
+    .tab-btn {
+      transition: all 0.2s cubic-bezier(.4, 0, .2, 1);
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0
+      }
+
+      to {
+        opacity: 1
+      }
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(16px)
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0)
+      }
+    }
+
+    @keyframes modalIn {
+      from {
+        opacity: 0;
+        transform: scale(0.95) translateY(12px)
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0)
+      }
+    }
+
+    @keyframes pulseDot {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: 0.15
+      }
+    }
+
+    @keyframes ripple {
+      from {
+        transform: scale(0);
+        opacity: 0.45
+      }
+
+      to {
+        transform: scale(3.5);
+        opacity: 0
+      }
+    }
+
+    @keyframes toastIn {
+      from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(8px)
+      }
+
+      to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0)
+      }
+    }
+
+    .fade-in {
+      animation: fadeIn 0.2s ease both;
+    }
+
+    .slide-up {
+      animation: slideUp 0.28s ease both;
+    }
+
+    .modal-in {
+      animation: modalIn 0.25s cubic-bezier(.4, 0, .2, 1) both;
+    }
+
+    .toast-anim {
+      animation: toastIn 0.25s ease both;
+    }
+
+    .pulse-dot {
+      animation: pulseDot 1.2s ease-in-out infinite;
+    }
+
+    .ripple-span {
+      position: absolute;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      margin: -30px 0 0 -30px;
+      background: rgba(255, 255, 255, 0.28);
+      animation: ripple 0.55s ease-out forwards;
+      pointer-events: none;
+    }
+
+    input::placeholder {
+      color: #475569;
+    }
+
+    input:focus {
+      outline: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useRef, useMemo } = React;
+    const { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } = Recharts;
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //  CONSTANTS & DEFAULTS
+    // ═══════════════════════════════════════════════════════════════════════════════
+    const STORAGE_LOGS = 'tt_logs_v2';
+    const STORAGE_GROUPS = 'tt_groups_v1';
+
+    const DEFAULT_GROUPS = [
+      {
+        id: 'living',
+        label: 'Sinh hoạt',
+        color: '#3b82f6',
+        activities: ['Thức dậy', 'Tắm', 'Ăn uống', 'Nghỉ ngơi'],
+      },
+      {
+        id: 'work',
+        label: 'Học tập / Làm việc',
+        color: '#22c55e',
+        activities: ['Làm ERP', 'Học Ngoại Thương', 'Luyện TOEIC', 'Chạy ShopeeFood'],
+      },
+      {
+        id: 'hobby',
+        label: 'Sở thích / Phát triển',
+        color: '#a855f7',
+        activities: ['Lướt TikTok/CapCut', 'Tập Hình Ý Quyền', 'Thiền'],
+      },
+    ];
+
+    const GROUP_BG = (color) => ({
+      background: color + '26',
+      border: `1px solid ${color}55`,
+      color: color === '#3b82f6' ? '#bfdbfe'
+        : color === '#22c55e' ? '#bbf7d0'
+          : color === '#a855f7' ? '#e9d5ff'
+            : '#e2e8f0',
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //  STORAGE HELPERS
+    // ═══════════════════════════════════════════════════════════════════════════════
+    function loadJSON(key, fallback) {
+      try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : fallback; }
+      catch { return fallback; }
+    }
+    function saveJSON(key, val) {
+      try { localStorage.setItem(key, JSON.stringify(val)); } catch { }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //  DATE / FORMAT HELPERS
+    // ═══════════════════════════════════════════════════════════════════════════════
+    const todayKey = () => new Date().toISOString().slice(0, 10);
+
+    function fmtTime(ts) {
+      return new Date(ts).toLocaleTimeString('vi-VN', {
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+      });
+    }
+    function fmtDate(ts) {
+      return new Date(ts).toLocaleDateString('vi-VN', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+      });
+    }
+    // fmtDurationMs: convert raw milliseconds → human-readable string
+    function fmtDurationMs(ms) {
+      if (!ms || ms <= 0) return '0 phút';
+      const totalMins = Math.round(ms / 60000);
+      if (totalMins <= 0) return '0 phút';
+      if (totalMins < 60) return `${totalMins} phút`;
+      const h = Math.floor(totalMins / 60), m = totalMins % 60;
+      return m > 0 ? `${h}g ${m}p` : `${h} giờ`;
+    }
+    // Legacy alias for places that still pass minutes (timeline item)
+    function fmtDuration(mins) {
+      return fmtDurationMs(mins * 60000);
+    }
+
+    function getWeekRange() {
+      const now = new Date();
+      const day = now.getDay(); // 0=Sun
+      const mon = new Date(now); mon.setDate(now.getDate() - ((day + 6) % 7)); mon.setHours(0, 0, 0, 0);
+      const sun = new Date(mon); sun.setDate(mon.getDate() + 6); sun.setHours(23, 59, 59, 999);
+      return [mon.getTime(), sun.getTime()];
+    }
+    function getMonthRange() {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      return [start.getTime(), end.getTime()];
+    }
+    function getTodayRange() {
+      const s = new Date(); s.setHours(0, 0, 0, 0);
+      const e = new Date(); e.setHours(23, 59, 59, 999);
+      return [s.getTime(), e.getTime()];
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //  RIPPLE
+    // ═══════════════════════════════════════════════════════════════════════════════
+    function addRipple(e, el) {
+      const rect = el.getBoundingClientRect();
+      const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+      const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+      const s = document.createElement('span');
+      s.className = 'ripple-span';
+      s.style.left = cx + 'px'; s.style.top = cy + 'px';
+      el.appendChild(s);
+      setTimeout(() => s.remove(), 700);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //  ACTIVITY BUTTON
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // pendingButton: global ref to track which button is in 'pending confirm' state
+    // We use a module-level object so any button can cancel another's pending state.
+    const pendingState = { label: null, timer: null, setter: null };
+
+    function ActivityButton({ label, color, onAdd }) {
+      const ref = useRef(null);
+      const [pending, setPending] = useState(false);
+      const bg = GROUP_BG(color);
+      const pendBg = {
+        background: '#b4530026',
+        border: '1px solid #f59e0b88',
+        color: '#fcd34d',
+      };
+
+      // Clean up this button's pending state
+      const cancelPending = () => {
+        setPending(false);
+        if (pendingState.label === label) {
+          clearTimeout(pendingState.timer);
+          pendingState.label = null;
+          pendingState.timer = null;
+          pendingState.setter = null;
+        }
+      };
+
+      const handle = (e) => {
+        if (pending) {
+          // Second tap → confirm
+          cancelPending();
+          if (ref.current) addRipple(e, ref.current);
+          onAdd(label);
+          return;
+        }
+
+        // Cancel any other button's pending state
+        if (pendingState.setter && pendingState.label !== label) {
+          pendingState.setter(false);
+          clearTimeout(pendingState.timer);
+        }
+
+        // Enter pending state
+        setPending(true);
+        pendingState.label = label;
+        pendingState.setter = setPending;
+        pendingState.timer = setTimeout(() => {
+          setPending(false);
+          pendingState.label = null;
+          pendingState.timer = null;
+          pendingState.setter = null;
+        }, 3000);
+      };
+
+      return (
+        <button ref={ref} onPointerDown={handle}
+          className="act-btn relative overflow-hidden rounded-2xl px-3 py-3 text-sm font-semibold text-left"
+          style={{ minHeight: 52, transition: 'background 0.2s, border-color 0.2s, color 0.2s', ...(pending ? pendBg : bg) }}>
+          {pending ? '⚡ Xác nhận?' : label}
+        </button>
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //  LIVE CLOCK
+    // ═══════════════════════════════════════════════════════════════════════════════
+    function LiveClock() {
+      const [now, setNow] = useState(new Date());
+      useEffect(() => { const id = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(id); }, []);
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const ss = String(now.getSeconds()).padStart(2, '0');
+      const ds = now.toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      return (
+        <div className="text-center py-5 select-none">
+          <div className="flex items-center justify-center gap-2">
+            <span className="pulse-dot inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span className="text-5xl font-extrabold tracking-tight text-white tabular-nums">
+              {hh}<span style={{ color: '#475569' }}>:</span>{mm}
+            </span>
+            <span className="text-2xl font-bold tabular-nums self-end pb-1" style={{ color: '#475569' }}>{ss}</span>
+          </div>
+          <p className="text-sm mt-1 capitalize" style={{ color: '#94a3b8' }}>{ds}</p>
+        </div>
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //  TIMELINE ITEM
+    // ═══════════════════════════════════════════════════════════════════════════════
+    function TimelineItem({ entry, index, duration, groups, onDelete }) {
+      const group = groups.find(g => g.id === entry.groupId);
+      const color = group ? group.color : '#64748b';
+      return (
+        <div className="slide-up flex items-start gap-3 py-3"
+          style={{ borderBottom: '1px solid rgba(51,65,85,0.45)', animationDelay: `${index * 22}ms` }}>
+          <div className="flex flex-col items-center mt-1 flex-shrink-0">
+            <div className="w-3 h-3 rounded-full border-2" style={{ borderColor: color, background: color + '33' }}></div>
+            <div className="w-px mt-1" style={{ background: color + '44', minHeight: 18, flex: 1 }}></div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-white text-sm leading-snug">{entry.label}</span>
+              <button onClick={() => onDelete(entry.id)} aria-label="Xóa"
+                style={{ color: '#475569', padding: 4, marginRight: -4, flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer' }}
+                onMouseEnter={e => e.currentTarget.style.color = '#f87171'}
+                onMouseLeave={e => e.currentTarget.style.color = '#475569'}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className="text-xs" style={{ color: '#94a3b8' }}>{fmtTime(entry.timestamp)}</span>
+              {duration != null && duration > 0 && (
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                  style={{ background: color + '22', color }}>
+                  {fmtDuration(duration)}
+                </span>
+              )}
+              {group && <span className="text-xs" style={{ color: '#64748b' }}>{group.label}</span>}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //  SETTINGS MODAL
+    // ═══════════════════════════════════════════════════════════════════════════════
+    const COLORS_PALETTE = ['#3b82f6', '#22c55e', '#a855f7', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#84cc16'];
+
+    function SettingsModal({ groups, onSave, onClose }) {
+      const [draft, setDraft] = useState(() => JSON.parse(JSON.stringify(groups)));
+      const [editingGid, setEditingGid] = useState(null); // which group label is being edited
+      const [newActText, setNewActText] = useState({});   // { gid: string }
+      const [editActIdx, setEditActIdx] = useState(null); // { gid, idx }
+      const [editActVal, setEditActVal] = useState('');
+
+      const updateGroupLabel = (gid, val) =>
+        setDraft(d => d.map(g => g.id === gid ? { ...g, label: val } : g));
+
+      const updateGroupColor = (gid, color) =>
+        setDraft(d => d.map(g => g.id === gid ? { ...g, color } : g));
+
+      const addActivity = (gid) => {
+        const val = (newActText[gid] || '').trim();
+        if (!val) return;
+        setDraft(d => d.map(g => g.id === gid ? { ...g, activities: [...g.activities, val] } : g));
+        setNewActText(t => ({ ...t, [gid]: '' }));
+      };
+
+      const deleteActivity = (gid, idx) =>
+        setDraft(d => d.map(g => g.id === gid
+          ? { ...g, activities: g.activities.filter((_, i) => i !== idx) } : g));
+
+      const startEditAct = (gid, idx, val) => { setEditActIdx({ gid, idx }); setEditActVal(val); };
+      const saveEditAct = () => {
+        if (!editActIdx) return;
+        const { gid, idx } = editActIdx;
+        const val = editActVal.trim();
+        if (val) setDraft(d => d.map(g => g.id === gid
+          ? { ...g, activities: g.activities.map((a, i) => i === idx ? val : a) } : g));
+        setEditActIdx(null);
+      };
+
+      const addGroup = () => {
+        const id = 'grp_' + Date.now();
+        setDraft(d => [...d, { id, label: 'Nhóm mới', color: '#06b6d4', activities: [] }]);
+      };
+
+      const deleteGroup = (gid) => setDraft(d => d.filter(g => g.id !== gid));
+
+      return (
+        <div className="fade-in" style={{
+          position: 'fixed', inset: 0, zIndex: 100,
+          background: 'rgba(0,0,0,0.72)', display: 'flex',
+          alignItems: 'flex-end', justifyContent: 'center',
+          backdropFilter: 'blur(4px)',
+        }} onClick={e => e.target === e.currentTarget && onClose()}>
+          <div className="modal-in" style={{
+            width: '100%', maxWidth: 480,
+            background: '#0f172a', borderRadius: '24px 24px 0 0',
+            border: '1px solid #1e293b', borderBottom: 'none',
+            maxHeight: '90dvh', display: 'flex', flexDirection: 'column',
+            overflow: 'hidden',
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '16px 20px 12px', borderBottom: '1px solid #1e293b',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0
+            }}>
+              <div>
+                <h2 style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 17, margin: 0 }}>⚙️ Cài đặt danh mục</h2>
+                <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 0' }}>Chỉnh sửa nhóm và hoạt động</p>
+              </div>
+              <button onClick={onClose} style={{
+                background: '#1e293b', border: 'none', color: '#94a3b8',
+                borderRadius: 10, width: 32, height: 32, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
+              }}>×</button>
+            </div>
+
+            {/* Scrollable body */}
+            <div style={{ overflowY: 'auto', flex: 1, padding: '12px 16px' }}>
+              {draft.map((group) => (
+                <div key={group.id} style={{
+                  background: '#1e293b', borderRadius: 20,
+                  border: `1px solid ${group.color}44`,
+                  marginBottom: 12, padding: '12px 14px',
+                }}>
+                  {/* Group header row */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <div style={{ width: 12, height: 12, borderRadius: '50%', background: group.color, flexShrink: 0 }}></div>
+                    <input value={group.label}
+                      onChange={e => updateGroupLabel(group.id, e.target.value)}
+                      style={{
+                        flex: 1, background: '#0f172a', border: '1px solid #334155',
+                        color: '#f1f5f9', borderRadius: 10, padding: '6px 10px',
+                        fontSize: 13, fontWeight: 600,
+                      }} />
+                    <button onClick={() => deleteGroup(group.id)}
+                      style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Color picker */}
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+                    {COLORS_PALETTE.map(c => (
+                      <button key={c} onClick={() => updateGroupColor(group.id, c)}
+                        style={{
+                          width: 22, height: 22, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer',
+                          boxShadow: group.color === c ? `0 0 0 2px #0f172a, 0 0 0 4px ${c}` : 'none',
+                          transition: 'box-shadow 0.15s',
+                        }} />
+                    ))}
+                  </div>
+
+                  {/* Activities list */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {group.activities.map((act, idx) => (
+                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {editActIdx && editActIdx.gid === group.id && editActIdx.idx === idx ? (
+                          <>
+                            <input value={editActVal} onChange={e => setEditActVal(e.target.value)}
+                              onKeyDown={e => e.key === 'Enter' && saveEditAct()}
+                              autoFocus
+                              style={{
+                                flex: 1, background: '#0f172a', border: `1px solid ${group.color}88`,
+                                color: '#f1f5f9', borderRadius: 8, padding: '5px 8px', fontSize: 12,
+                              }} />
+                            <button onClick={saveEditAct}
+                              style={{ color: '#22c55e', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }}>✓</button>
+                          </>
+                        ) : (
+                          <>
+                            <span style={{
+                              flex: 1, fontSize: 12, color: '#cbd5e1',
+                              background: '#0f172a', borderRadius: 8, padding: '5px 8px',
+                              border: '1px solid #334155',
+                            }}>{act}</span>
+                            <button onClick={() => startEditAct(group.id, idx, act)}
+                              style={{ color: '#64748b', background: 'none', border: 'none', cursor: 'pointer' }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                              </svg>
+                            </button>
+                            <button onClick={() => deleteActivity(group.id, idx)}
+                              style={{ color: '#64748b', background: 'none', border: 'none', cursor: 'pointer' }}
+                              onMouseEnter={e => e.currentTarget.style.color = '#f87171'}
+                              onMouseLeave={e => e.currentTarget.style.color = '#64748b'}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                              </svg>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Add activity input */}
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                    <input
+                      value={newActText[group.id] || ''}
+                      onChange={e => setNewActText(t => ({ ...t, [group.id]: e.target.value }))}
+                      onKeyDown={e => e.key === 'Enter' && addActivity(group.id)}
+                      placeholder="+ Thêm hoạt động…"
+                      style={{
+                        flex: 1, background: '#0f172a', border: `1px solid ${group.color}55`,
+                        color: '#f1f5f9', borderRadius: 10, padding: '6px 10px', fontSize: 12,
+                      }} />
+                    <button onClick={() => addActivity(group.id)}
+                      style={{
+                        background: group.color + '33', border: `1px solid ${group.color}55`,
+                        color: group.color, borderRadius: 10, padding: '6px 10px',
+                        fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      }}>Thêm</button>
+                  </div>
+                </div>
+              ))}
+
+              {/* Add group button */}
+              <button onClick={addGroup} style={{
+                width: '100%', background: 'rgba(99,102,241,0.12)',
+                border: '1px dashed #6366f188', color: '#818cf8',
+                borderRadius: 16, padding: '12px', fontSize: 13, fontWeight: 600,
+                cursor: 'pointer', marginBottom: 12,
+              }}>+ Thêm nhóm mới</button>
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: '12px 16px', borderTop: '1px solid #1e293b', display: 'flex', gap: 8, flexShrink: 0 }}>
+              <button onClick={onClose} style={{
+                flex: 1, background: '#1e293b', color: '#94a3b8',
+                border: 'none', borderRadius: 14, padding: '12px',
+                fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              }}>Huỷ</button>
+              <button onClick={() => onSave(draft)} style={{
+                flex: 2, background: 'linear-gradient(135deg,#6366f1,#a855f7)',
+                color: '#fff', border: 'none', borderRadius: 14, padding: '12px',
+                fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(99,102,241,0.35)',
+              }}>💾 Lưu thay đổi</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //  LOG TAB
+    // ═══════════════════════════════════════════════════════════════════════════════
+    function LogTab({ todayLogs, groups, onAdd, onDelete, onOpenSettings }) {
+      const [customText, setCustomText] = useState('');
+
+      const handleCustomAdd = () => {
+        const val = customText.trim();
+        if (!val) return;
+        onAdd(val, null);
+        setCustomText('');
+      };
+
+      const sorted = [...todayLogs].sort((a, b) => b.timestamp - a.timestamp);
+      const asc = [...todayLogs].sort((a, b) => a.timestamp - b.timestamp);
+      const now = Date.now();
+      const durationMap = {};
+      asc.forEach((entry, i) => {
+        const next = asc[i + 1];
+        durationMap[entry.id] = Math.round(((next ? next.timestamp : now) - entry.timestamp) / 60000);
+      });
+
+      return (
+        <div style={{ padding: '0 16px 8px' }}>
+          {/* Clock + Settings button */}
+          <div style={{ position: 'relative' }}>
+            <LiveClock />
+            <button onClick={onOpenSettings} style={{
+              position: 'absolute', top: 20, right: 0,
+              background: 'rgba(30,41,59,0.8)', border: '1px solid #334155',
+              color: '#94a3b8', borderRadius: 12, padding: '6px 10px',
+              fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 4,
+            }}>
+              <span>⚙️</span><span>Cài đặt</span>
+            </button>
+          </div>
+
+          {/* Groups */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {groups.map(group => (
+              <div key={group.id}>
+                <p style={{
+                  fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
+                  textTransform: 'uppercase', color: group.color + 'cc', margin: '0 0 8px',
+                }}>{group.label}</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {group.activities.map(act => (
+                    <ActivityButton key={act} label={act} color={group.color}
+                      onAdd={label => onAdd(label, group.id)} />
+                  ))}
+                  {group.activities.length === 0 && (
+                    <p style={{ color: '#475569', fontSize: 12, gridColumn: '1/-1' }}>Chưa có hoạt động nào.</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Custom input */}
+          <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
+            <input type="text" value={customText}
+              onChange={e => setCustomText(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleCustomAdd()}
+              placeholder="Hoạt động khác…"
+              style={{
+                flex: 1, background: 'rgba(30,41,59,0.8)', border: '1px solid #334155',
+                color: '#f1f5f9', borderRadius: 16, padding: '12px 16px', fontSize: 14,
+              }}
+              onFocus={e => e.target.style.borderColor = '#6366f1'}
+              onBlur={e => e.target.style.borderColor = '#334155'} />
+            <button onClick={handleCustomAdd} style={{
+              background: '#4f46e5', color: '#fff', fontWeight: 700,
+              borderRadius: 16, padding: '12px 18px', fontSize: 14,
+              border: 'none', cursor: 'pointer', flexShrink: 0,
+            }}
+              onMouseEnter={e => e.currentTarget.style.background = '#4338ca'}
+              onMouseLeave={e => e.currentTarget.style.background = '#4f46e5'}>
+              Thêm
+            </button>
+          </div>
+
+          {/* Timeline */}
+          <div style={{ marginTop: 24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <h2 style={{
+                color: '#94a3b8', fontSize: 11, fontWeight: 700,
+                textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0
+              }}>Hôm nay</h2>
+              <span style={{ color: '#475569', fontSize: 12 }}>{todayLogs.length} hoạt động</span>
+            </div>
+            {sorted.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                <p style={{ color: '#475569', fontSize: 14 }}>Chưa có hoạt động nào. Hãy bắt đầu ghi nhận! ✨</p>
+              </div>
+            ) : (
+              <div style={{
+                background: 'rgba(30,41,59,0.4)', border: '1px solid rgba(51,65,85,0.4)',
+                borderRadius: 24, padding: '0 16px',
+              }}>
+                {sorted.map((entry, i) => (
+                  <TimelineItem key={entry.id} entry={entry} index={i}
+                    duration={durationMap[entry.id]} groups={groups} onDelete={onDelete} />
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{ height: 24 }}></div>
+        </div>
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //  COMPUTE STATS from a filtered log array
+    //
+    //  KEY DESIGN: Duration is computed CHRONOLOGICALLY across the entire allLogs
+    //  universe (not bucketed by calendar day). This correctly handles activities
+    //  like "Ngủ" that start before midnight and end the next morning.
+    //
+    //  Parameters:
+    //    filteredLogs – logs whose timestamps fall inside [filterStart, filterEnd]
+    //    groups       – group definitions
+    //    allSortedLogs – ALL logs sorted ascending (used to find true next activity)
+    //    filterStart   – start of the selected period (ms)
+    //    filterEnd     – end of the selected period (ms)
+    // ═══════════════════════════════════════════════════════════════════════════════
+    function computeStats(filteredLogs, groups, allSortedLogs, filterStart, filterEnd) {
+      const nowTs = Date.now();
+      // Effective end of filter: don't go beyond "now" for ongoing periods
+      const effectiveEnd = Math.min(filterEnd, nowTs);
+
+      // Build a global index: log.id → index in allSortedLogs
+      // so we can find the chronological next activity for any entry.
+      const globalIdx = {};
+      allSortedLogs.forEach((e, i) => { globalIdx[e.id] = i; });
+
+      // groupDur / actDur store raw MILLISECONDS.
+      const groupDur = {};
+      groups.forEach(g => { groupDur[g.id] = 0; });
+      groupDur['other'] = 0;
+
+      const actDur = {}; // { label: { ms: number, groupId: string } }
+
+      // For each entry inside the filter window, find its true end time:
+      //   endTs = timestamp of the very next activity in the global sorted list
+      //           (regardless of which day it belongs to), OR nowTs if it is
+      //           the last recorded activity overall.
+      // Then clamp [entry.timestamp, endTs] into [filterStart, effectiveEnd]
+      // so only the portion that falls within the selected period is counted.
+      filteredLogs.forEach(entry => {
+        const idx = globalIdx[entry.id];
+        const nextEntry = (idx !== undefined && idx + 1 < allSortedLogs.length)
+          ? allSortedLogs[idx + 1]
+          : null;
+
+        const rawEnd = nextEntry ? nextEntry.timestamp : nowTs;
+
+        // Clamp: only count the slice that overlaps with [filterStart, effectiveEnd]
+        const clampedStart = Math.max(entry.timestamp, filterStart);
+        const clampedEnd   = Math.min(rawEnd, effectiveEnd);
+        const durMs = Math.max(0, clampedEnd - clampedStart);
+
+        const gid = entry.groupId || 'other';
+        groupDur[gid in groupDur ? gid : 'other'] += durMs;
+
+        if (!actDur[entry.label]) actDur[entry.label] = { ms: 0, groupId: entry.groupId };
+        actDur[entry.label].ms += durMs;
+      });
+
+      // Return entries in chronological order (for Markdown timeline)
+      const sorted = [...filteredLogs].sort((a, b) => a.timestamp - b.timestamp);
+      return { sorted, groupDur, actDur };
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //  MARKDOWN EXPORT
+    // ═══════════════════════════════════════════════════════════════════════════════
+    function exportMarkdown(filteredLogs, groups, periodLabel, allSortedLogs, filterStart, filterEnd) {
+      const { sorted, groupDur, actDur } = computeStats(filteredLogs, groups, allSortedLogs, filterStart, filterEnd);
+      const totalMs = Object.values(groupDur).reduce((a, b) => a + b, 0);
+      const nowTs = Date.now();
+      const effectiveEnd = Math.min(filterEnd, nowTs);
+
+      const now = new Date();
+      let md = '';
+      md += `# 📋 Báo cáo Time Tracker\n\n`;
+      md += `**Kỳ báo cáo:** ${periodLabel}  \n`;
+      md += `**Xuất lúc:** ${now.toLocaleString('vi-VN')}  \n`;
+      md += `**Tổng thời gian:** ${fmtDurationMs(totalMs)}\n\n`;
+      md += `---\n\n`;
+
+      md += `## 📊 Tổng kết theo nhóm\n\n`;
+      md += `| Nhóm | Thời gian | Tỷ lệ |\n`;
+      md += `|------|-----------|-------|\n`;
+      [...groups, { id: 'other', label: 'Khác' }].forEach(g => {
+        const durMs = groupDur[g.id] || 0;
+        if (!durMs) return;
+        const pct = totalMs > 0 ? Math.round(durMs / totalMs * 100) : 0;
+        md += `| ${g.label} | ${fmtDurationMs(durMs)} | ${pct}% |\n`;
+      });
+
+      md += `\n---\n\n`;
+      md += `## 🏃 Chi tiết hoạt động\n\n`;
+      md += `| Hoạt động | Nhóm | Tổng thời gian |\n`;
+      md += `|-----------|------|----------------|\n`;
+      Object.entries(actDur)
+        .sort((a, b) => b[1].ms - a[1].ms)
+        .forEach(([label, { ms, groupId }]) => {
+          const g = groups.find(x => x.id === groupId);
+          md += `| ${label} | ${g ? g.label : 'Khác'} | ${fmtDurationMs(ms)} |\n`;
+        });
+
+      md += `\n---\n\n`;
+      md += `## 🕐 Timeline chi tiết\n\n`;
+      md += `| Thời gian | Hoạt động | Nhóm | Khoảng thời gian |\n`;
+      md += `|-----------|-----------|------|------------------|\n`;
+      // Use global sorted list to find true next activity (cross-day aware)
+      const globalIdx = {};
+      allSortedLogs.forEach((e, i) => { globalIdx[e.id] = i; });
+      sorted.forEach((entry) => {
+        const idx = globalIdx[entry.id];
+        const nextEntry = (idx !== undefined && idx + 1 < allSortedLogs.length)
+          ? allSortedLogs[idx + 1]
+          : null;
+        const rawEnd = nextEntry ? nextEntry.timestamp : nowTs;
+        const clampedStart = Math.max(entry.timestamp, filterStart);
+        const clampedEnd   = Math.min(rawEnd, effectiveEnd);
+        const durMs = Math.max(0, clampedEnd - clampedStart);
+        const g = groups.find(x => x.id === entry.groupId);
+        const date = fmtDate(entry.timestamp);
+        const time = fmtTime(entry.timestamp);
+        md += `| ${date} ${time} | ${entry.label} | ${g ? g.label : 'Khác'} | ${fmtDurationMs(durMs)} |\n`;
+      });
+
+      md += `\n---\n*Tạo bởi Time Tracker App*\n`;
+
+      // Download
+      const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const safe = periodLabel.replace(/[^a-z0-9\u00C0-\u024F]/gi, '_');
+      a.href = url;
+      a.download = `time-tracker_${safe}_${now.toISOString().slice(0, 10)}.md`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //  CUSTOM PIE TOOLTIP
+    // ═══════════════════════════════════════════════════════════════════════════════
+    function CustomTooltip({ active, payload }) {
+      if (!active || !payload || !payload.length) return null;
+      const d = payload[0];
+      return (
+        <div style={{
+          background: '#1e293b', border: '1px solid #334155',
+          borderRadius: 12, padding: '8px 12px', fontSize: 13,
+        }}>
+          <p style={{ color: '#f1f5f9', fontWeight: 600, margin: 0 }}>{d.name}</p>
+          <p style={{ color: d.payload.fill, margin: '2px 0 0' }}>{fmtDurationMs(d.value)}</p>
+        </div>
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //  DASHBOARD TAB
+    // ═══════════════════════════════════════════════════════════════════════════════
+    const PERIODS = [
+      { id: 'today', label: 'Hôm nay' },
+      { id: 'week', label: 'Tuần này' },
+      { id: 'month', label: 'Tháng này' },
+    ];
+
+    function Dashboard({ allLogs, groups }) {
+      const [period, setPeriod] = useState('today');
+
+      // Compute time range, filtered logs, AND the global sorted list
+      const { filteredLogs, allSortedLogs, filterStart, filterEnd, periodLabel } = useMemo(() => {
+        let start, end;
+        if (period === 'today') { [start, end] = getTodayRange(); }
+        else if (period === 'week') { [start, end] = getWeekRange(); }
+        else { [start, end] = getMonthRange(); }
+
+        const all = Object.values(allLogs).flat();
+        // allSortedLogs: every log ever recorded, sorted chronologically
+        // This is the universe used to find "next activity" for cross-day durations.
+        const globalSorted = [...all].sort((a, b) => a.timestamp - b.timestamp);
+        const filtered = all.filter(e => e.timestamp >= start && e.timestamp <= end);
+        const label = period === 'today' ? `Hôm nay (${new Date().toLocaleDateString('vi-VN')})`
+          : period === 'week' ? `Tuần này (${new Date(start).toLocaleDateString('vi-VN')} – ${new Date(end).toLocaleDateString('vi-VN')})`
+            : `Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`;
+        return { filteredLogs: filtered, allSortedLogs: globalSorted, filterStart: start, filterEnd: end, periodLabel: label };
+      }, [period, allLogs]);
+
+      const { sorted, groupDur, actDur } = useMemo(
+        () => computeStats(filteredLogs, groups, allSortedLogs, filterStart, filterEnd),
+        [filteredLogs, groups, allSortedLogs, filterStart, filterEnd]
+      );
+
+      // groupDur values are ms — sum in ms, format once
+      const totalMs = Object.values(groupDur).reduce((a, b) => a + b, 0);
+
+      const pieData = [
+        ...groups.map(g => ({ name: g.label, value: groupDur[g.id] || 0, fill: g.color })),
+        { name: 'Khác', value: groupDur['other'] || 0, fill: '#64748b' },
+      ].filter(d => d.value > 0);
+
+      const card = {
+        background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(51,65,85,0.5)',
+        borderRadius: 24, padding: 16, marginBottom: 16,
+      };
+
+      return (
+        <div style={{ padding: '8px 16px' }}>
+
+          {/* Period filter */}
+          <div style={{ display: 'flex', background: 'rgba(30,41,59,0.7)', borderRadius: 16, padding: 4, gap: 4, marginBottom: 16 }}>
+            {PERIODS.map(p => {
+              const active = period === p.id;
+              return (
+                <button key={p.id} onClick={() => setPeriod(p.id)} className="tab-btn"
+                  style={{
+                    flex: 1, padding: '8px 4px', borderRadius: 12, fontSize: 12,
+                    fontWeight: 600, border: 'none', cursor: 'pointer',
+                    background: active ? '#4f46e5' : 'transparent',
+                    color: active ? '#fff' : '#64748b',
+                    boxShadow: active ? '0 4px 12px rgba(79,70,229,0.4)' : 'none',
+                  }}>
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {filteredLogs.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 24px' }}>
+              <div style={{
+                width: 80, height: 80, borderRadius: '50%', background: '#1e293b',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px'
+              }}>
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#475569"
+                  strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                </svg>
+              </div>
+              <p style={{ color: '#94a3b8', fontWeight: 500, margin: 0 }}>Không có dữ liệu trong kỳ này</p>
+              <p style={{ color: '#475569', fontSize: 13, marginTop: 4 }}>Hãy ghi nhận hoạt động ở tab Ghi nhận!</p>
+            </div>
+          ) : (
+            <>
+              {/* Pie chart */}
+              <div style={card}>
+                <h2 style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 15, margin: '0 0 2px' }}>Phân bổ thời gian</h2>
+                <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 8px' }}>Tổng: {fmtDurationMs(totalMs)}</p>
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Pie data={pieData} cx="50%" cy="50%"
+                      innerRadius={55} outerRadius={95} paddingAngle={3} dataKey="value">
+                      {pieData.map((e, i) => <Cell key={i} fill={e.fill} stroke="transparent" />)}
+                    </Pie>
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend
+                      formatter={v => <span style={{ color: '#cbd5e1', fontSize: 12 }}>{v}</span>}
+                      iconType="circle" iconSize={8} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Group breakdown */}
+              <div style={card}>
+                <h2 style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 15, margin: '0 0 12px' }}>Chi tiết từng nhóm</h2>
+                {[...groups, { id: 'other', label: 'Khác', color: '#64748b' }].map(g => {
+                  const durMs = groupDur[g.id] || 0;
+                  if (!durMs) return null;
+                  const pct = totalMs > 0 ? Math.round(durMs / totalMs * 100) : 0;
+                  return (
+                    <div key={g.id} style={{ marginBottom: 12 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                        <span style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 500 }}>{g.label}</span>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <span style={{ color: '#94a3b8', fontSize: 12 }}>{fmtDurationMs(durMs)}</span>
+                          <span style={{ color: g.color, fontSize: 12, fontWeight: 700 }}>{pct}%</span>
+                        </div>
+                      </div>
+                      <div style={{ height: 7, background: '#1e293b', borderRadius: 99, overflow: 'hidden' }}>
+                        <div style={{
+                          height: '100%', borderRadius: 99, background: g.color,
+                          width: `${pct}%`, transition: 'width 0.7s ease'
+                        }}></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Activity detail */}
+              <div style={card}>
+                <h2 style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 15, margin: '0 0 8px' }}>Hoạt động chi tiết</h2>
+                {Object.entries(actDur)
+                  .sort((a, b) => b[1].ms - a[1].ms)
+                  .map(([label, { ms, groupId }]) => {
+                    const g = groups.find(x => x.id === groupId);
+                    const color = g ? g.color : '#64748b';
+                    return (
+                      <div key={label} style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '8px 0', borderBottom: '1px solid rgba(51,65,85,0.4)',
+                      }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }}></div>
+                        <span style={{
+                          flex: 1, fontSize: 13, color: '#e2e8f0',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                        }}>{label}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#f1f5f9', flexShrink: 0 }}>{fmtDurationMs(ms)}</span>
+                      </div>
+                    );
+                  })
+                }
+              </div>
+
+              {/* Export button */}
+              <button onClick={() => exportMarkdown(filteredLogs, groups, periodLabel, allSortedLogs, filterStart, filterEnd)}
+                style={{
+                  width: '100%', padding: '14px',
+                  background: 'linear-gradient(135deg,rgba(99,102,241,0.2),rgba(168,85,247,0.2))',
+                  border: '1px solid rgba(99,102,241,0.4)', borderRadius: 20,
+                  color: '#a5b4fc', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  marginBottom: 8,
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'linear-gradient(135deg,rgba(99,102,241,0.35),rgba(168,85,247,0.35))'}
+                onMouseLeave={e => e.currentTarget.style.background = 'linear-gradient(135deg,rgba(99,102,241,0.2),rgba(168,85,247,0.2))'}>
+                <span>📥</span>
+                <span>Xuất báo cáo Markdown (.md)</span>
+              </button>
+            </>
+          )}
+
+          <div style={{ height: 24 }}></div>
+        </div>
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //  ROOT APP
+    // ═══════════════════════════════════════════════════════════════════════════════
+    function App() {
+      const [allLogs, setAllLogs] = useState(() => loadJSON(STORAGE_LOGS, {}));
+      const [groups, setGroups] = useState(() => loadJSON(STORAGE_GROUPS, DEFAULT_GROUPS));
+      const [activeTab, setActiveTab] = useState('log');
+      const [showSettings, setShowSettings] = useState(false);
+      const [toast, setToast] = useState(null);
+      const toastRef = useRef(null);
+
+      const today = todayKey();
+      const todayLogs = allLogs[today] || [];
+
+      // Persist
+      useEffect(() => { saveJSON(STORAGE_LOGS, allLogs); }, [allLogs]);
+      useEffect(() => { saveJSON(STORAGE_GROUPS, groups); }, [groups]);
+
+      const showToast = (msg) => {
+        setToast(msg);
+        clearTimeout(toastRef.current);
+        toastRef.current = setTimeout(() => setToast(null), 2200);
+      };
+
+      // Build GROUP_MAP from current groups
+      const groupMap = useMemo(() => {
+        const m = {};
+        groups.forEach(g => g.activities.forEach(a => { m[a] = g.id; }));
+        return m;
+      }, [groups]);
+
+      const handleAdd = useCallback((label, groupId) => {
+        const entry = {
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+          label,
+          groupId: groupId || groupMap[label] || null,
+          timestamp: Date.now(),
+        };
+        setAllLogs(prev => ({ ...prev, [today]: [...(prev[today] || []), entry] }));
+        showToast(`✅ ${label}`);
+      }, [today, groupMap]);
+
+      const handleDelete = useCallback((id) => {
+        setAllLogs(prev => ({
+          ...prev,
+          [today]: (prev[today] || []).filter(e => e.id !== id),
+        }));
+      }, [today]);
+
+      const handleSaveSettings = (newGroups) => {
+        setGroups(newGroups);
+        setShowSettings(false);
+        showToast('💾 Đã lưu cài đặt!');
+      };
+
+      const TABS = [
+        { id: 'log', icon: '📋', label: 'Ghi nhận' },
+        { id: 'dashboard', icon: '📊', label: 'Thống kê' },
+      ];
+
+      return (
+        <div style={{
+          display: 'flex', flexDirection: 'column', minHeight: '100dvh',
+          maxWidth: 480, margin: '0 auto', background: '#0f172a',
+          color: '#f1f5f9', position: 'relative',
+        }}>
+          {/* ── Header ── */}
+          <header style={{
+            position: 'sticky', top: 0, zIndex: 20,
+            background: 'rgba(15,23,42,0.92)', backdropFilter: 'blur(12px)',
+            borderBottom: '1px solid #1e293b', padding: '12px 16px 0',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: 10,
+                  background: 'linear-gradient(135deg,#6366f1,#a855f7)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 4px 12px rgba(99,102,241,0.35)',
+                }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white"
+                    strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                  </svg>
+                </div>
+                <span style={{ fontWeight: 700, fontSize: 16, color: '#f1f5f9' }}>Time Tracker</span>
+              </div>
+              <span style={{
+                fontSize: 11, color: '#64748b', background: '#1e293b',
+                padding: '4px 10px', borderRadius: 99,
+              }}>
+                {new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+              </span>
+            </div>
+
+            {/* Tabs */}
+            <div style={{ display: 'flex', background: 'rgba(30,41,59,0.7)', borderRadius: 16, padding: 4, gap: 4, marginBottom: 12 }}>
+              {TABS.map(tab => {
+                const active = activeTab === tab.id;
+                return (
+                  <button key={tab.id} onClick={() => setActiveTab(tab.id)} className="tab-btn"
+                    style={{
+                      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      padding: '8px 0', borderRadius: 12, fontSize: 13, fontWeight: 600,
+                      border: 'none', cursor: 'pointer',
+                      background: active ? '#4f46e5' : 'transparent',
+                      color: active ? '#fff' : '#64748b',
+                      boxShadow: active ? '0 4px 12px rgba(79,70,229,0.4)' : 'none',
+                    }}>
+                    <span>{tab.icon}</span><span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </header>
+
+          {/* ── Content ── */}
+          <main style={{ flex: 1, overflowY: 'auto' }}>
+            {activeTab === 'log'
+              ? <LogTab todayLogs={todayLogs} groups={groups}
+                onAdd={handleAdd} onDelete={handleDelete}
+                onOpenSettings={() => setShowSettings(true)} />
+              : <Dashboard allLogs={allLogs} groups={groups} />
+            }
+          </main>
+
+          {/* ── Toast ── */}
+          {toast && (
+            <div className="toast-anim" style={{
+              position: 'fixed', bottom: 80, left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'rgba(15,23,42,0.97)', backdropFilter: 'blur(8px)',
+              color: '#f1f5f9', fontSize: 13, fontWeight: 500,
+              padding: '10px 18px', borderRadius: 16,
+              border: '1px solid rgba(99,102,241,0.4)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+              whiteSpace: 'nowrap', zIndex: 50, pointerEvents: 'none',
+            }}>
+              {toast}
+            </div>
+          )}
+
+          {/* ── Settings Modal ── */}
+          {showSettings && (
+            <SettingsModal
+              groups={groups}
+              onSave={handleSaveSettings}
+              onClose={() => setShowSettings(false)} />
+          )}
+        </div>
+      );
+    }
+
+    // ── Mount ──────────────────────────────────────────────────────────────────────
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+
+</html>
