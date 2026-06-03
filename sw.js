@@ -1,17 +1,8 @@
-const CACHE_NAME = 'time-tracker-v3';
-const STATIC_ASSETS = [
-  './',
-  './index.html',
-  './manifest.json',
-  './icon-192.png',
-  './icon-512.png',
-  './splash.png',
-];
+// Service Worker v4 – simplified, no pre-cache to avoid install failures
+const CACHE_NAME = 'time-tracker-v4';
 
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
-  );
+  // Skip pre-caching to avoid install failures on slow connections
   self.skipWaiting();
 });
 
@@ -27,7 +18,6 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (url.origin === location.origin) {
-    // Network-first: luôn lấy bản mới nhất, fallback về cache nếu offline
     event.respondWith(
       fetch(event.request)
         .then(response => {
