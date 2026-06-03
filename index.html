@@ -1290,10 +1290,74 @@
           )}
         </div>
       );
-    }
-
     // ── Mount ──────────────────────────────────────────────────────────────────────
     ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js');
+      });
+    }
+
+    // ── PWA Install Button ──────────────────────────────────────────────────────
+    let deferredPrompt = null;
+
+    // Tạo nút cài đặt app
+    const installBtn = document.createElement('button');
+    installBtn.id = 'pwa-install-btn';
+    installBtn.innerHTML = '📲 Cài app';
+    installBtn.style.cssText = `
+      display: none;
+      position: fixed;
+      bottom: 24px;
+      right: 16px;
+      z-index: 9999;
+      background: linear-gradient(135deg, #6366f1, #a855f7);
+      color: #fff;
+      border: none;
+      border-radius: 50px;
+      padding: 12px 20px;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(99,102,241,0.5);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    `;
+    installBtn.addEventListener('mouseenter', () => {
+      installBtn.style.transform = 'scale(1.05)';
+    });
+    installBtn.addEventListener('mouseleave', () => {
+      installBtn.style.transform = 'scale(1)';
+    });
+    document.body.appendChild(installBtn);
+
+    // Bắt sự kiện beforeinstallprompt (Chrome Android)
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      installBtn.style.display = 'block';
+    });
+
+    // Khi nhấn nút → hiện dialog cài đặt PWA
+    installBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        installBtn.style.display = 'none';
+      }
+      deferredPrompt = null;
+    });
+
+    // Ẩn nút khi app đã được cài
+    window.addEventListener('appinstalled', () => {
+      installBtn.style.display = 'none';
+      deferredPrompt = null;
+    });
   </script>
 </body>
 
